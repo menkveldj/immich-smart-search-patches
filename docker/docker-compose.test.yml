@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  immich-server-test:
+    image: immich-server:latest-with-patches
+    container_name: immich-test-api
+    ports:
+      - "3003:2283"
+    environment:
+      - NODE_ENV=production
+      - LOG_LEVEL=log
+      - DB_HOSTNAME=immich-postgres-test
+      - DB_USERNAME=postgres
+      - DB_PASSWORD=postgres
+      - DB_DATABASE_NAME=immich
+      - REDIS_HOSTNAME=immich-redis-test
+      - IMMICH_MACHINE_LEARNING_URL=http://immich-ml-test:3003
+      - IMMICH_METRICS=false
+      - IMMICH_TELEMETRY_ENABLED=false
+    volumes:
+      - immich-test-data:/usr/src/app/upload
+    depends_on:
+      - immich-postgres-test
+      - immich-redis-test
+    restart: unless-stopped
+
+  immich-postgres-test:
+    image: tensorchord/pgvecto-rs:pg16-v0.3.0
+    container_name: immich-postgres-test
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_DB: immich
+      POSTGRES_EXTENSIONS: pgvecto_rs
+    volumes:
+      - postgres-test-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  immich-redis-test:
+    image: redis:7.4-alpine
+    container_name: immich-redis-test
+    restart: unless-stopped
+
+  immich-ml-test:
+    image: ghcr.io/immich-app/immich-machine-learning:v1.122.3
+    container_name: immich-ml-test
+    environment:
+      - MACHINE_LEARNING_CACHE_FOLDER=/cache
+      - IMMICH_HOST=http://immich-server-test:2283
+      - IMMICH_API_KEY=test
+    volumes:
+      - ml-test-cache:/cache
+    restart: unless-stopped
+
+volumes:
+  postgres-test-data:
+  immich-test-data:
+  ml-test-cache:

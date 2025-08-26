@@ -1,0 +1,140 @@
+diff --git a/server/src/dtos/asset-response.dto.ts b/server/src/dtos/asset-response.dto.ts
+index a255ac1..f1dbc9b 100644
+--- a/server/src/dtos/asset-response.dto.ts
++++ b/server/src/dtos/asset-response.dto.ts
+@@ -54,6 +54,12 @@ export class AssetResponseDto extends SanitizedAssetResponseDto {
+ 
+   @PropertyLifecycle({ deprecatedAt: 'v1.113.0' })
+   resized?: boolean;
++
++  /** Smart search distance score (lower is better) */
++  distance?: number | null;
++  
++  /** Smart search similarity score (0-1, higher is better) */
++  similarity?: number | null;
+ }
+ 
+ export class AssetStackResponseDto {
+@@ -149,6 +155,11 @@ export function mapAsset(entity: AssetEntity, options: AssetMapOptions = {}): As
+     hasMetadata: true,
+     duplicateId: entity.duplicateId,
+     resized: true,
++    // Add distance and similarity if present from smart search
++    distance: (entity as any).distance ?? undefined,
++    similarity: (entity as any).distance !== undefined 
++      ? Math.max(0, Math.min(1, 1 - (entity as any).distance))
++      : undefined,
+   };
+ }
+ 
+diff --git a/server/src/dtos/search.dto.ts b/server/src/dtos/search.dto.ts
+index 5c5dce1..1eb3da7 100644
+--- a/server/src/dtos/search.dto.ts
++++ b/server/src/dtos/search.dto.ts
+@@ -177,6 +177,9 @@ export class SmartSearchDto extends BaseSearchDto {
+   @IsNotEmpty()
+   query!: string;
+ 
++  @ValidateUUID({ optional: true })
++  albumId?: string;
++
+   @IsInt()
+   @Min(1)
+   @Type(() => Number)
+diff --git a/server/src/interfaces/search.interface.ts b/server/src/interfaces/search.interface.ts
+index d59291c..2a3b61b 100644
+--- a/server/src/interfaces/search.interface.ts
++++ b/server/src/interfaces/search.interface.ts
+@@ -113,6 +113,10 @@ export interface SearchPeopleOptions {
+   personIds?: string[];
+ }
+ 
++export interface SearchAlbumOptions {
++  albumId?: string;
++}
++
+ export interface SearchOrderOptions {
+   orderDirection?: 'ASC' | 'DESC';
+ }
+@@ -129,7 +133,8 @@ type BaseAssetSearchOptions = SearchDateOptions &
+   SearchPathOptions &
+   SearchStatusOptions &
+   SearchUserIdOptions &
+-  SearchPeopleOptions;
++  SearchPeopleOptions &
++  SearchAlbumOptions;
+ 
+ export type AssetSearchOptions = BaseAssetSearchOptions & SearchRelationOptions;
+ 
+@@ -143,7 +148,8 @@ export type SmartSearchOptions = SearchDateOptions &
+   SearchOneToOneRelationOptions &
+   SearchStatusOptions &
+   SearchUserIdOptions &
+-  SearchPeopleOptions;
++  SearchPeopleOptions &
++  SearchAlbumOptions;
+ 
+ export interface FaceEmbeddingSearch extends SearchEmbeddingOptions {
+   hasPerson?: boolean;
+diff --git a/server/src/repositories/search.repository.ts b/server/src/repositories/search.repository.ts
+index 0a529f2..61d2496 100644
+--- a/server/src/repositories/search.repository.ts
++++ b/server/src/repositories/search.repository.ts
+@@ -138,6 +138,7 @@ export class SearchRepository implements ISearchRepository {
+       builder
+         .innerJoin('asset.smartSearch', 'search')
+         .andWhere('asset.ownerId IN (:...userIds )')
++        .addSelect('search.embedding <=> :embedding', 'distance')
+         .orderBy('search.embedding <=> :embedding')
+         .setParameters({ userIds, embedding: asVector(embedding) });
+ 
+@@ -145,11 +146,26 @@ export class SearchRepository implements ISearchRepository {
+       if (runtimeConfig) {
+         await manager.query(runtimeConfig);
+       }
+-      results = await paginatedBuilder<AssetEntity>(builder, {
+-        mode: PaginationMode.LIMIT_OFFSET,
+-        skip: (pagination.page - 1) * pagination.size,
+-        take: pagination.size,
++      // Use getRawAndEntities to preserve the distance field
++      builder
++        .limit(pagination.size + 1)
++        .offset((pagination.page - 1) * pagination.size);
++      
++      const { entities, raw } = await builder.getRawAndEntities();
++      const hasNextPage = entities.length > pagination.size;
++      
++      if (hasNextPage) {
++        entities.splice(pagination.size);
++        raw.splice(pagination.size);
++      }
++      
++      // Attach distance to entities
++      const entitiesWithDistance = entities.map((entity, index) => {
++        (entity as any).distance = raw[index]?.distance;
++        return entity;
+       });
++      
++      results = { items: entitiesWithDistance, hasNextPage };
+     });
+ 
+     return results;
+diff --git a/server/src/utils/database.ts b/server/src/utils/database.ts
+index ad2198b..c189a35 100644
+--- a/server/src/utils/database.ts
++++ b/server/src/utils/database.ts
+@@ -114,6 +114,14 @@ export function searchAssetBuilder(
+       .andWhere(`${builder.alias}.isVisible = true`);
+   }
+ 
++  // Filter by specific album if albumId is provided
++  const { albumId } = options as any;
++  if (albumId) {
++    builder
++      .innerJoin('albums_assets_assets', 'album_asset', `album_asset.assetsId = ${builder.alias}.id`)
++      .andWhere('album_asset.albumsId = :albumId', { albumId });
++  }
++
+   if (withFaces || withPeople) {
+     builder.leftJoinAndSelect(`${builder.alias}.faces`, 'faces');
+   }

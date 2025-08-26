@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Test artifacts
+*.log
+test_image_*.jpg
+.env.test
+test_credentials.env
+admin_login.json
+
+# Build outputs
+dist/
+build/
+
+# Docker
+*.tar
+*.tar.gz
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Test reports
+reports/
+test-reports/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
