@@ -10,9 +10,13 @@ RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Get script directory
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+REPO_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
+
 # Default version
 IMMICH_VERSION="${1:-v1.122.3}"
-PATCH_FILE="${2:-patches/add-smartsearch-score-and-album.diff}"
+PATCH_FILE="${2:-$REPO_ROOT/patches/add-smartsearch-score-and-album.diff}"
 
 echo -e "${YELLOW}Validating patch against Immich ${IMMICH_VERSION}${NC}"
 echo "==========================================="
@@ -33,11 +37,11 @@ cd immich-source
 
 # Try to apply patch
 echo -e "\n${YELLOW}Testing patch application...${NC}"
-if git apply --check "$OLDPWD/$PATCH_FILE" 2>/dev/null; then
+if git apply --check "$PATCH_FILE" 2>/dev/null; then
     echo -e "${GREEN}✅ Patch can be applied cleanly!${NC}"
     
     # Actually apply it
-    git apply "$OLDPWD/$PATCH_FILE"
+    git apply "$PATCH_FILE"
     
     # Verify key changes
     echo -e "\n${YELLOW}Verifying patch contents...${NC}"
@@ -82,7 +86,7 @@ else
     echo -e "${RED}✗ Patch cannot be applied cleanly${NC}"
     echo -e "\n${YELLOW}Attempting 3-way merge to identify conflicts...${NC}"
     
-    git apply --3way "$OLDPWD/$PATCH_FILE" 2>&1 || true
+    git apply --3way "$PATCH_FILE" 2>&1 || true
     
     echo -e "\n${YELLOW}Conflicts found in:${NC}"
     git diff --name-only --diff-filter=U

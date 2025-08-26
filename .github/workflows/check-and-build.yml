@@ -15,7 +15,7 @@ on:
 env:
   IMMICH_REPO: immich-app/immich
   REGISTRY: ghcr.io
-  IMAGE_NAME: menkveldj/immich-server-patched
+  IMAGE_NAME: ${{ github.repository_owner }}/immich-server-patched
 
 jobs:
   check-release:
@@ -58,6 +58,10 @@ jobs:
     needs: check-release
     if: needs.check-release.outputs.should_build == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      issues: write
     
     steps:
       - name: Checkout repository

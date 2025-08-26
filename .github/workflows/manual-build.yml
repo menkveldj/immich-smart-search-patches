@@ -15,11 +15,14 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: menkveldj/immich-server-patched
+  IMAGE_NAME: ${{ github.repository_owner }}/immich-server-patched
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     
     steps:
       - name: Checkout repository
