@@ -44,7 +44,7 @@ Filter smart search results to specific albums:
 1. Clone Immich and this repository:
 ```bash
 git clone https://github.com/immich-app/immich.git
-git clone https://github.com/YOUR_USERNAME/immich-smart-search-patches.git
+git clone https://github.com/menkveldj/immich-smart-search-patches.git
 ```
 
 2. Apply the patches:

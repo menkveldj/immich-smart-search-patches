@@ -16,4 +16,4 @@ RUN apt-get update && apt-get install -y patch && \
 # Final stage uses patched build
 FROM base
 LABEL org.opencontainers.image.description="Immich Server with Smart Search Patches"
-LABEL org.opencontainers.image.source="https://github.com/YOUR_USERNAME/immich-smart-search-patches"
+LABEL org.opencontainers.image.source="https://github.com/menkveldj/immich-smart-search-patches"
