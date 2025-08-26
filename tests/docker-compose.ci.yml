@@ -1,0 +1,32 @@
+version: '3.8'
+
+networks:
+  immich-test:
+    name: immich-test
+
+services:
+  postgres-test:
+    image: tensorchord/pgvecto-rs:pg16-v0.3.0
+    container_name: immich-ci-postgres
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_DB: immich
+    networks:
+      - immich-test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis-test:
+    image: redis:7.4-alpine
+    container_name: immich-ci-redis
+    networks:
+      - immich-test
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5

@@ -1,0 +1,233 @@
+name: Check Immich Releases and Build
+
+on:
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: 'Force rebuild even if version exists'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  IMMICH_REPO: immich-app/immich
+  REGISTRY: ghcr.io
+  IMAGE_NAME: menkveldj/immich-server-patched
+
+jobs:
+  check-release:
+    runs-on: ubuntu-latest
+    outputs:
+      new_version: ${{ steps.check.outputs.new_version }}
+      should_build: ${{ steps.check.outputs.should_build }}
+      release_tag: ${{ steps.check.outputs.release_tag }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Check for new Immich release
+        id: check
+        run: |
+          # Get latest Immich release
+          LATEST_RELEASE=$(curl -s https://api.github.com/repos/${{ env.IMMICH_REPO }}/releases/latest | jq -r '.tag_name')
+          echo "Latest Immich release: $LATEST_RELEASE"
+          
+          # Check if we've already built this version
+          LAST_BUILT_VERSION=""
+          if [ -f .github/last_built_version.txt ]; then
+            LAST_BUILT_VERSION=$(cat .github/last_built_version.txt)
+          fi
+          echo "Last built version: $LAST_BUILT_VERSION"
+          
+          # Determine if we should build
+          if [ "$LATEST_RELEASE" != "$LAST_BUILT_VERSION" ] || [ "${{ github.event.inputs.force_build }}" == "true" ]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            echo "new_version=$LATEST_RELEASE" >> $GITHUB_OUTPUT
+            echo "release_tag=$LATEST_RELEASE" >> $GITHUB_OUTPUT
+            echo "🚀 New version detected or force build requested: $LATEST_RELEASE"
+          else
+            echo "should_build=false" >> $GITHUB_OUTPUT
+            echo "✅ Already up to date with $LATEST_RELEASE"
+          fi
+
+  build-and-test:
+    needs: check-release
+    if: needs.check-release.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Clone Immich repository
+        run: |
+          git clone --depth 1 --branch ${{ needs.check-release.outputs.release_tag }} \
+            https://github.com/${{ env.IMMICH_REPO }}.git immich-source
+          
+      - name: Apply patches
+        id: patch
+        run: |
+          cd immich-source
+          echo "📝 Applying smart search patches..."
+          
+          # Try to apply the patch
+          if git apply --check ../patches/add-smartsearch-score-and-album.diff; then
+            git apply ../patches/add-smartsearch-score-and-album.diff
+            echo "✅ Patches applied successfully"
+            echo "patch_success=true" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Patch failed to apply cleanly"
+            echo "patch_success=false" >> $GITHUB_OUTPUT
+            
+            # Try with 3-way merge
+            git apply --3way ../patches/add-smartsearch-score-and-album.diff || true
+            
+            # Show conflicts if any
+            git status
+            exit 1
+          fi
+          
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ needs.check-release.outputs.release_tag }}
+            type=raw,value=latest
+            type=sha
+            
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./immich-source
+          file: ./immich-source/server/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: false
+          load: true
+          tags: ${{ env.IMAGE_NAME }}:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          
+      - name: Test patches
+        run: |
+          # Start test environment
+          docker compose -f tests/docker-compose.ci.yml up -d
+          
+          # Wait for services to be ready
+          sleep 30
+          
+          # Run verification script
+          docker run --rm --network immich-test \
+            ${{ env.IMAGE_NAME }}:test \
+            sh -c "cat /usr/src/app/dist/repositories/search.repository.js | grep -q 'distance' && \
+                   cat /usr/src/app/dist/utils/database.js | grep -q 'albumId' && \
+                   echo '✅ Patches verified in build' || \
+                   (echo '❌ Patches not found in build' && exit 1)"
+          
+          # Clean up
+          docker compose -f tests/docker-compose.ci.yml down
+          
+      - name: Push Docker image
+        if: success()
+        uses: docker/build-push-action@v5
+        with:
+          context: ./immich-source
+          file: ./immich-source/server/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          
+      - name: Update last built version
+        if: success()
+        run: |
+          echo "${{ needs.check-release.outputs.release_tag }}" > .github/last_built_version.txt
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add .github/last_built_version.txt
+          git commit -m "chore: Update last built version to ${{ needs.check-release.outputs.release_tag }}"
+          git push
+          
+      - name: Create GitHub Release
+        if: success()
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.check-release.outputs.release_tag }}-patched
+          name: Immich ${{ needs.check-release.outputs.release_tag }} with Smart Search Patches
+          body: |
+            ## 🚀 Automated Build
+            
+            This release contains Immich ${{ needs.check-release.outputs.release_tag }} with the following patches applied:
+            - ✅ Distance/Similarity scoring for smart search results
+            - ✅ Album filtering support with `albumId` parameter
+            
+            ### Docker Image
+            ```bash
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.check-release.outputs.release_tag }}
+            ```
+            
+            ### Docker Compose Usage
+            ```yaml
+            services:
+              immich-server:
+                image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.check-release.outputs.release_tag }}
+                # ... rest of your configuration
+            ```
+            
+            ### Changes
+            - Built from [Immich ${{ needs.check-release.outputs.release_tag }}](https://github.com/${{ env.IMMICH_REPO }}/releases/tag/${{ needs.check-release.outputs.release_tag }})
+            - Patches applied successfully
+            - Multi-architecture support (amd64, arm64)
+            
+          draft: false
+          prerelease: false
+
+  notify-failure:
+    needs: [check-release, build-and-test]
+    if: failure()
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Create issue for failed build
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = `Build failed for Immich ${context.payload.inputs?.force_build ? '(forced)' : '${{ needs.check-release.outputs.release_tag }}'}`;
+            const body = `## Build Failure Report
+            
+            The automated build failed for Immich ${{ needs.check-release.outputs.release_tag }}.
+            
+            **Likely cause:** The patches may need to be updated for the new Immich version.
+            
+            **Action required:**
+            1. Check the [workflow run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
+            2. Update patches if needed
+            3. Test locally
+            4. Commit updated patches
+            
+            cc @${{ github.repository_owner }}`;
+            
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: body,
+              labels: ['build-failure', 'automated']
+            });

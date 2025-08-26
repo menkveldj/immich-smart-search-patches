@@ -1,0 +1,85 @@
+name: Manual Build and Push
+
+on:
+  workflow_dispatch:
+    inputs:
+      immich_version:
+        description: 'Immich version to build (e.g., v1.122.3)'
+        required: true
+        default: 'v1.122.3'
+      push_image:
+        description: 'Push image to registry'
+        required: true
+        default: true
+        type: boolean
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: menkveldj/immich-server-patched
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Clone Immich repository
+        run: |
+          git clone --depth 1 --branch ${{ github.event.inputs.immich_version }} \
+            https://github.com/immich-app/immich.git immich-source
+          
+      - name: Apply patches
+        run: |
+          cd immich-source
+          echo "📝 Applying patches to Immich ${{ github.event.inputs.immich_version }}..."
+          
+          # Apply the patch
+          git apply ../patches/add-smartsearch-score-and-album.diff
+          
+          echo "✅ Patches applied successfully"
+          
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        
+      - name: Log in to GitHub Container Registry
+        if: github.event.inputs.push_image == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./immich-source
+          file: ./immich-source/server/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event.inputs.push_image }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.immich_version }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          
+      - name: Output image info
+        run: |
+          echo "## 🎉 Build Complete!"
+          echo ""
+          echo "### Docker Image"
+          echo '```bash'
+          echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.immich_version }}"
+          echo '```'
+          echo ""
+          echo "### Docker Compose Usage"
+          echo '```yaml'
+          echo "services:"
+          echo "  immich-server:"
+          echo "    image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.immich_version }}"
+          echo "    # ... rest of your configuration"
+          echo '```'
