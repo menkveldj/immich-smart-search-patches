@@ -2,6 +2,17 @@
 
 Enhanced smart search capabilities for [Immich](https://github.com/immich-app/immich) with distance/similarity scoring and album filtering.
 
+## 🚀 Quick Start
+
+```bash
+# Clone the repository
+git clone https://github.com/menkveldj/immich-smart-search-patches.git
+cd immich-smart-search-patches
+
+# Run automated end-to-end test with pre-built Docker image
+./scripts/end-to-end-test.sh ghcr.io/menkveldj/immich-server-patched:v1.122.3
+```
+
 ## 🚀 Features
 
 ### 1. Distance & Similarity Scoring
@@ -23,18 +34,19 @@ Filter smart search results to specific albums:
 ```
 ├── patches/                    # Patch files to apply to Immich
 │   └── add-smartsearch-score-and-album.diff
-├── tests/                      # Comprehensive test suite
-│   ├── test-distance-scoring.sh
-│   ├── test-album-filtering.sh
-│   ├── test-performance.sh
-│   ├── test-security.sh
-│   ├── test-integration.sh
-│   └── run-all-tests.sh
-├── docker/                     # Docker configurations
-│   └── docker-compose.test.yml
+├── scripts/                    # Automation scripts
+│   ├── end-to-end-test.sh     # Automated test script
+│   └── test-docker-image.sh   # Docker image verification
+├── test-images/                # Pre-created test images
+│   ├── ocean_1.jpg
+│   ├── ocean_2.jpg
+│   ├── ocean_3.jpg
+│   ├── forest_1.jpg
+│   └── forest_2.jpg
+├── docker-compose.local-test.yml  # Test environment config
 └── .github/workflows/          # CI/CD automation
-    ├── track-upstream.yml
-    └── build-and-push.yml
+    ├── check-and-build.yml     # Daily build automation
+    └── manual-build.yml        # Manual build trigger
 ```
 
 ## 🔧 Installation
@@ -73,39 +85,59 @@ docker-compose -f docker/docker-compose.test.yml up
 ## 🧪 Testing
 
 ### Quick End-to-End Test
-Run a complete test of the patched Docker image:
+Run a complete automated test of the patched Docker image:
+
 ```bash
-# Test the latest image
+# Prerequisites: Docker must be running
+
+# Test the latest image (default)
 ./scripts/end-to-end-test.sh
 
-# Test a specific image
+# Test a specific image version
 ./scripts/end-to-end-test.sh ghcr.io/menkveldj/immich-server-patched:v1.122.3
+
+# Test a local Docker image
+./scripts/end-to-end-test.sh immich-server:local-build
 ```
 
-This script will:
-- Start a complete Docker environment
-- Create admin user and API keys
-- Upload test images
-- Test distance/similarity fields
-- Test album filtering
-- Verify all patches are working
-- Clean up automatically
+#### What the test does:
+1. **Environment Setup**: Starts a complete Docker stack (server, database, Redis, ML service)
+2. **Authentication**: Creates admin user and API key automatically
+3. **Test Data**: Uploads 5 pre-created test images (3 ocean, 2 forest) from `test-images/`
+4. **Smart Search Tests**: Verifies distance/similarity fields are present and correctly calculated
+5. **Album Filtering**: Tests album-based search filtering functionality
+6. **Cleanup**: Automatically removes all containers and volumes after testing
 
-### Detailed Test Suites
+#### Test Output:
+The script provides color-coded results:
+- 🟢 Green checkmarks (✓) for passed tests
+- 🔴 Red X marks (✗) for failed tests
+- Summary report at the end with total pass/fail counts
+
+#### Manual Docker Testing:
+If you want to run the Docker environment manually:
 ```bash
-cd tests
-./get-token.sh  # Get API token
-./run-all-tests.sh
+# Start the test environment
+docker-compose -f docker-compose.local-test.yml up -d
+
+# Check logs
+docker logs -f immich-patched-server
+
+# Stop and cleanup
+docker-compose -f docker-compose.local-test.yml down -v
 ```
 
-### Run Specific Tests
+### Verify Docker Image Has Patches
+Quickly verify that a Docker image has the patches applied:
 ```bash
-./test-distance-scoring.sh   # Test distance/similarity fields
-./test-album-filtering.sh    # Test album filtering
-./test-performance.sh         # Performance benchmarks
-./test-security.sh           # Security validation
-./test-integration.sh        # End-to-end testing
+# Check if patches are in the image
+./scripts/test-docker-image.sh ghcr.io/menkveldj/immich-server-patched:v1.122.3
 ```
+
+This will verify:
+- Distance field implementation in search repository
+- getRawAndEntities usage for custom fields
+- Album filtering implementation
 
 ## 📊 API Usage Examples
 
