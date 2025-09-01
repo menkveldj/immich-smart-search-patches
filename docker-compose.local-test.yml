@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  immich-server:
+    image: ghcr.io/menkveldj/immich-server-patched:v1.122.3
+    container_name: immich-patched-server
+    ports:
+      - "3003:2283"
+    environment:
+      - NODE_ENV=production
+      - LOG_LEVEL=log
+      - DB_HOSTNAME=immich-postgres
+      - DB_USERNAME=postgres
+      - DB_PASSWORD=postgres
+      - DB_DATABASE_NAME=immich
+      - REDIS_HOSTNAME=immich-redis
+      - IMMICH_MACHINE_LEARNING_URL=http://immich-ml:3003
+      - IMMICH_METRICS=false
+      - IMMICH_TELEMETRY_ENABLED=false
+    volumes:
+      - immich-data:/usr/src/app/upload
+    depends_on:
+      - immich-postgres
+      - immich-redis
+      - immich-ml
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:2283/api/server/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  immich-postgres:
+    image: tensorchord/pgvecto-rs:pg16-v0.3.0
+    container_name: immich-patched-postgres
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_DB: immich
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  immich-redis:
+    image: redis:7.4-alpine
+    container_name: immich-patched-redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  immich-ml:
+    image: ghcr.io/immich-app/immich-machine-learning:v1.122.3
+    container_name: immich-patched-ml
+    environment:
+      - MACHINE_LEARNING_CACHE_FOLDER=/cache
+    volumes:
+      - ml-cache:/cache
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  immich-data:
+  ml-cache:

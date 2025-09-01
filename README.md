@@ -72,7 +72,26 @@ docker-compose -f docker/docker-compose.test.yml up
 
 ## 🧪 Testing
 
-### Run All Tests
+### Quick End-to-End Test
+Run a complete test of the patched Docker image:
+```bash
+# Test the latest image
+./scripts/end-to-end-test.sh
+
+# Test a specific image
+./scripts/end-to-end-test.sh ghcr.io/menkveldj/immich-server-patched:v1.122.3
+```
+
+This script will:
+- Start a complete Docker environment
+- Create admin user and API keys
+- Upload test images
+- Test distance/similarity fields
+- Test album filtering
+- Verify all patches are working
+- Clean up automatically
+
+### Detailed Test Suites
 ```bash
 cd tests
 ./get-token.sh  # Get API token
