@@ -32,7 +32,8 @@ jobs:
       - name: Check for new Immich release
         id: check
         run: |
-          # Get latest Immich release
+          # Get latest Immich release (not pre-release)
+          # Using /releases/latest endpoint ensures we only get stable releases
           LATEST_RELEASE=$(curl -s https://api.github.com/repos/${{ env.IMMICH_REPO }}/releases/latest | jq -r '.tag_name')
           echo "Latest Immich release: $LATEST_RELEASE"
           
@@ -112,8 +113,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=${{ needs.check-release.outputs.release_tag }}
-            type=raw,value=latest
-            type=sha
+            type=raw,value=release
             
       - name: Build Docker image
         uses: docker/build-push-action@v5
