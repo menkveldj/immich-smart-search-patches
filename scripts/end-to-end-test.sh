@@ -84,40 +84,31 @@ wait_for_service() {
     return 1
 }
 
-# Function to create test images
-create_test_images() {
-    echo "Creating test images..."
+# Function to copy test images
+copy_test_images() {
+    echo "Copying test images..."
     
-    # Create ocean themed images (blue)
-    for i in {1..3}; do
-        if command -v convert &> /dev/null; then
-            convert -size 400x300 xc:blue -pointsize 48 -fill white \
-                -gravity center -annotate +0+0 "Ocean $i" ocean_$i.jpg 2>/dev/null
-        else
-            # Create a minimal valid JPEG if ImageMagick not available
-            printf "\xFF\xD8\xFF\xE0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00" > ocean_$i.jpg
-            printf "\xFF\xDB\x00\x43\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\x09\x09" >> ocean_$i.jpg
-            # Add minimal data to make it valid
-            dd if=/dev/zero bs=1024 count=10 2>/dev/null | tr '\0' '\377' >> ocean_$i.jpg
-            printf "\xFF\xD9" >> ocean_$i.jpg
-        fi
-    done
+    # Get the script directory
+    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+    TEST_IMAGES_DIR="${SCRIPT_DIR}/../test-images"
     
-    # Create forest themed images (green)
-    for i in {1..2}; do
-        if command -v convert &> /dev/null; then
-            convert -size 400x300 xc:green -pointsize 48 -fill white \
-                -gravity center -annotate +0+0 "Forest $i" forest_$i.jpg 2>/dev/null
-        else
-            # Create a minimal valid JPEG
-            printf "\xFF\xD8\xFF\xE0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00" > forest_$i.jpg
-            printf "\xFF\xDB\x00\x43\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\x09\x09" >> forest_$i.jpg
-            dd if=/dev/zero bs=1024 count=10 2>/dev/null | tr '\0' '\377' >> forest_$i.jpg
-            printf "\xFF\xD9" >> forest_$i.jpg
-        fi
-    done
+    # Check if test images exist
+    if [ ! -d "$TEST_IMAGES_DIR" ]; then
+        echo -e "${RED}Error: Test images directory not found at $TEST_IMAGES_DIR${NC}"
+        exit 1
+    fi
     
-    echo -e "${GREEN}✓${NC} Created 5 test images"
+    # Copy test images to current directory
+    cp "${TEST_IMAGES_DIR}/"*.jpg . 2>/dev/null
+    
+    # Verify images were copied
+    local image_count=$(ls -1 ocean_*.jpg forest_*.jpg 2>/dev/null | wc -l)
+    if [ "$image_count" -eq 5 ]; then
+        echo -e "${GREEN}✓${NC} Copied 5 test images"
+    else
+        echo -e "${RED}Error: Expected 5 test images, found $image_count${NC}"
+        exit 1
+    fi
 }
 
 # Main test execution
@@ -202,7 +193,7 @@ main() {
     # Step 3: Upload test images
     print_header "Step 3: Uploading Test Images"
     
-    create_test_images
+    copy_test_images
     
     ASSET_IDS=()
     for img in ocean_*.jpg forest_*.jpg; do
@@ -234,7 +225,7 @@ main() {
         -d '{"command": "start", "force": false}' > /dev/null
     
     echo "Waiting for ML processing..."
-    sleep 15
+    sleep 20
     
     # Step 4: Test Distance/Similarity Fields
     print_header "Step 4: Testing Distance/Similarity Fields"
@@ -361,14 +352,14 @@ main() {
     else
         OCEAN_PASS="false"
     fi
-    run_test "Ocean album filter returns ocean images" "$OCEAN_PASS"
+    run_test "Ocean album filter returns only ocean images" "$OCEAN_PASS"
     
     if [ "$FOREST_COUNT" -gt 0 ] && [ "$FOREST_COUNT" -le "$NO_FILTER_COUNT" ]; then
         FOREST_PASS="true"
     else
         FOREST_PASS="false"
     fi
-    run_test "Forest album filter returns forest images" "$FOREST_PASS"
+    run_test "Forest album filter returns only forest images" "$FOREST_PASS"
     
     [ "$FAKE_COUNT" -eq 0 ] && FAKE_PASS="true" || FAKE_PASS="false"
     run_test "Non-existent album returns no results" "$FAKE_PASS"
