@@ -15,19 +15,14 @@ cd immich-smart-search-patches
 
 ## 🚀 Features
 
-### 1. Distance & Similarity Scoring
+### Distance & Similarity Scoring for Smart Search
 Adds distance and similarity scores to smart search results, enabling:
 - **Distance field**: Cosine distance from query (lower = better match)
 - **Similarity field**: Normalized similarity score (0-1, higher = better)
 - Proper result ranking by relevance
 - Preserved scores through pagination
 
-### 2. Album-based Search Filtering
-Filter smart search results to specific albums:
-- **albumId parameter**: Restrict search to a single album
-- UUID validation for security
-- Maintains distance/similarity scoring within filtered results
-- Returns empty results for non-existent albums
+**Note**: Starting from v1.140.1, Immich natively supports album filtering via the `albumIds` parameter in smart search, so our patch now only adds the distance/similarity scoring functionality.
 
 ## 📦 What's Included
 

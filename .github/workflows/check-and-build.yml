@@ -79,20 +79,19 @@ jobs:
           cd immich-source
           echo "📝 Applying smart search patches..."
           
-          # Try to apply the patch
-          if git apply --check ../patches/add-smartsearch-score-and-album.diff; then
+          # Try to apply the patch for v1.140.1+
+          if git apply --check ../patches/add-distance-v1.140.1.diff 2>/dev/null; then
+            git apply ../patches/add-distance-v1.140.1.diff
+            echo "✅ v1.140.1+ patch applied successfully"
+            echo "patch_success=true" >> $GITHUB_OUTPUT
+          # Fall back to old patch for earlier versions
+          elif git apply --check ../patches/add-smartsearch-score-and-album.diff 2>/dev/null; then
             git apply ../patches/add-smartsearch-score-and-album.diff
-            echo "✅ Patches applied successfully"
+            echo "✅ Legacy patch applied successfully"
             echo "patch_success=true" >> $GITHUB_OUTPUT
           else
-            echo "❌ Patch failed to apply cleanly"
+            echo "❌ No compatible patch found"
             echo "patch_success=false" >> $GITHUB_OUTPUT
-            
-            # Try with 3-way merge
-            git apply --3way ../patches/add-smartsearch-score-and-album.diff || true
-            
-            # Show conflicts if any
-            git status
             exit 1
           fi
           

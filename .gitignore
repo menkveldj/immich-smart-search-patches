@@ -5,8 +5,11 @@ node_modules/
 *.log
 test_image_*.jpg
 .env.test
+.env.production
 test_credentials.env
 admin_login.json
+test-data/
+test-output/
 
 # Build outputs
 dist/

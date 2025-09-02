@@ -38,10 +38,18 @@ jobs:
           cd immich-source
           echo "📝 Applying patches to Immich ${{ github.event.inputs.immich_version }}..."
           
-          # Apply the patch
-          git apply ../patches/add-smartsearch-score-and-album.diff
-          
-          echo "✅ Patches applied successfully"
+          # Try v1.140.1+ patch first
+          if git apply --check ../patches/add-distance-v1.140.1.diff 2>/dev/null; then
+            git apply ../patches/add-distance-v1.140.1.diff
+            echo "✅ v1.140.1+ patch applied successfully"
+          # Fall back to legacy patch
+          elif git apply --check ../patches/add-smartsearch-score-and-album.diff 2>/dev/null; then
+            git apply ../patches/add-smartsearch-score-and-album.diff
+            echo "✅ Legacy patch applied successfully"
+          else
+            echo "❌ No compatible patch found"
+            exit 1
+          fi
           
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3

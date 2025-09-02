@@ -1,0 +1,39 @@
+diff --git a/server/src/dtos/asset-response.dto.ts b/server/src/dtos/asset-response.dto.ts
+index f60f2a8..d326e46 100644
+--- a/server/src/dtos/asset-response.dto.ts
++++ b/server/src/dtos/asset-response.dto.ts
+@@ -93,6 +93,14 @@ export class AssetResponseDto extends SanitizedAssetResponseDto {
+ 
+   @PropertyLifecycle({ deprecatedAt: 'v1.113.0' })
+   resized?: boolean;
++
++  @ApiProperty({ type: 'number', required: false })
++  distance?: number;
++  
++  @ApiProperty({ type: 'number', required: false })
++  get similarity(): number | undefined {
++    return this.distance !== undefined ? 1 - this.distance : undefined;
++  }
+ }
+ 
+ export type MapAsset = {
+@@ -130,6 +138,7 @@ export type MapAsset = {
+   tags?: Tag[];
+   thumbhash: Buffer<ArrayBufferLike> | null;
+   type: AssetType;
++  distance?: number;
+ };
+ 
+ export class AssetStackResponseDto {
+diff --git a/server/src/repositories/search.repository.ts b/server/src/repositories/search.repository.ts
+index 36ef7a2..3c77d66 100644
+--- a/server/src/repositories/search.repository.ts
++++ b/server/src/repositories/search.repository.ts
+@@ -284,6 +284,7 @@ export class SearchRepository {
+       await sql`set local vchordrq.probes = ${sql.lit(probes[VectorIndex.Clip])}`.execute(trx);
+       const items = await searchAssetBuilder(trx, options)
+         .selectAll('asset')
++        .select(sql<number>`smart_search.embedding <=> ${options.embedding}`.as('distance'))
+         .innerJoin('smart_search', 'asset.id', 'smart_search.assetId')
+         .orderBy(sql`smart_search.embedding <=> ${options.embedding}`)
+         .limit(pagination.size + 1)
