@@ -1,0 +1,106 @@
+diff --git a/server/src/dtos/asset-response.dto.ts b/server/src/dtos/asset-response.dto.ts
+index abc123..def456 100644
+--- a/server/src/dtos/asset-response.dto.ts
++++ b/server/src/dtos/asset-response.dto.ts
+@@ -125,6 +125,12 @@ export class AssetResponseDto extends SanitizedAssetResponseDto {
+   stack!: AssetStackResponseDto | null;
+   @ApiProperty({ type: 'integer' })
+   stackCount!: number;
++  @ApiProperty({ type: 'number', required: false })
++  distance?: number;
++  @ApiProperty({ type: 'number', required: false })
++  get similarity(): number | undefined {
++    return this.distance !== undefined ? 1 - this.distance : undefined;
++  }
+ }
+ 
+ export class AssetStackResponseDto {
+diff --git a/server/src/dtos/search.dto.ts b/server/src/dtos/search.dto.ts
+index abc123..def456 100644
+--- a/server/src/dtos/search.dto.ts
++++ b/server/src/dtos/search.dto.ts
+@@ -197,6 +197,13 @@ export class SmartSearchDto extends BaseSearchWithResultsDto {
+   @Type(() => Number)
+   @Optional()
+   page?: number;
++
++  @IsNumber()
++  @Min(0)
++  @Max(2)
++  @Type(() => Number)
++  @Optional()
++  @ApiProperty({ type: 'number', required: false, description: 'Maximum distance threshold for filtering results (0-2, lower is more similar)' })
++  maxDistance?: number;
+ }
+ 
+ export class FaceDto {
+diff --git a/server/src/interfaces/search.interface.ts b/server/src/interfaces/search.interface.ts
+index abc123..def456 100644
+--- a/server/src/interfaces/search.interface.ts
++++ b/server/src/interfaces/search.interface.ts
+@@ -68,6 +68,7 @@ export interface SmartSearchOptions extends BaseSearchOptions {
+   deviceIds?: string[];
+   userIds?: string[];
+   withHidden?: boolean;
++  maxDistance?: number;
+ }
+ 
+ export interface FaceEmbeddingSearch {
+diff --git a/server/src/repositories/search.repository.ts b/server/src/repositories/search.repository.ts
+index abc123..def456 100644
+--- a/server/src/repositories/search.repository.ts
++++ b/server/src/repositories/search.repository.ts
+@@ -283,14 +283,37 @@ export class SearchRepository {
+ 
+     return this.db.transaction().execute(async (trx) => {
+       await sql`set local vchordrq.probes = ${sql.lit(probes[VectorIndex.Clip])}`.execute(trx);
+-      const items = await searchAssetBuilder(trx, options)
++      
++      let query = searchAssetBuilder(trx, options)
+         .selectAll('asset')
++        .select(sql<number>`smart_search.embedding <=> ${options.embedding}`.as('distance'))
+         .innerJoin('smart_search', 'asset.id', 'smart_search.assetId')
+-        .orderBy(sql`smart_search.embedding <=> ${options.embedding}`)
++        .orderBy(sql`smart_search.embedding <=> ${options.embedding}`);
++      
++      // Apply distance filter if maxDistance is specified
++      if (options.maxDistance !== undefined && options.maxDistance >= 0) {
++        query = query.where(sql`smart_search.embedding <=> ${options.embedding}`, '<=', options.maxDistance);
++      }
++      
++      const items = await query
+         .limit(pagination.size + 1)
+         .offset((pagination.page - 1) * pagination.size)
+         .execute();
+-      return paginationHelper(items, pagination.size);
++      
++      // Map items to include distance in the asset response
++      const itemsWithDistance = items.map((item: any) => {
++        // Extract distance value from the result
++        const distance = item.distance;
++        // Remove distance from the raw result to avoid TypeScript issues
++        const { distance: _, ...assetData } = item;
++        
++        // Return asset with distance property
++        return {
++          ...assetData,
++          distance
++        } as AssetEntity & { distance?: number };
++      });
++      
++      return paginationHelper(itemsWithDistance, pagination.size);
+     });
+   }
+ 
+diff --git a/server/src/services/search.service.ts b/server/src/services/search.service.ts
+index abc123..def456 100644
+--- a/server/src/services/search.service.ts
++++ b/server/src/services/search.service.ts
+@@ -133,6 +133,7 @@ export class SearchService extends BaseService {
+       userIds: [auth.user.id],
+       embedding,
+       withHidden: dto.withHidden,
++      maxDistance: dto.maxDistance,
+     });
+ 
+     const assets = results.items.map((item) => mapAsset(item, { withStack: true, auth }));
