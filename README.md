@@ -57,29 +57,64 @@ Our patch adds powerful distance-based filtering and scoring to Immich's smart s
 
 ### Understanding Distance Values
 
-The `maxDistance` parameter uses **cosine distance** to measure similarity between image embeddings:
+The `maxDistance` parameter uses **cosine distance** to measure similarity between image embeddings. 
 
-| Distance Range | Similarity | Description | Use Case |
-|---------------|------------|-------------|----------|
-| **0.0 - 0.2** | 100% - 90% | Nearly identical | Find duplicates or near-duplicates |
-| **0.2 - 0.4** | 90% - 80% | Very similar | Same scene, minor variations |
-| **0.4 - 0.6** | 80% - 70% | Similar | Same subject/category |
-| **0.6 - 0.8** | 70% - 60% | Moderately similar | Related content |
-| **0.8 - 1.0** | 60% - 50% | Somewhat related | Loose thematic connection |
-| **1.0** | 50% | Unrelated | Orthogonal vectors |
-| **1.0 - 1.5** | 50% - 25% | Different | Dissimilar content |
-| **1.5 - 2.0** | 25% - 0% | Opposite | Completely different |
+> ⚠️ **Important**: Distance ranges vary significantly based on the ML model used. Immich supports both CLIP and SigLIP models, which have different similarity scales.
+
+#### For CLIP Models (ViT-B-32__openai, etc.)
+
+| Distance Range | Similarity | Match Quality | Description |
+|---------------|------------|---------------|-------------|
+| **0.0 - 0.2** | 100% - 80% | 🏆 Perfect | Nearly identical images |
+| **0.2 - 0.4** | 80% - 60% | ⭐ Excellent | Very similar, same scene |
+| **0.4 - 0.6** | 60% - 40% | ✅ Great | Same subject/category |
+| **0.6 - 0.8** | 40% - 20% | 👍 Good | Related content |
+| **0.8 - 1.0** | 20% - 0% | 🔍 Fair | Loose connection |
+| **1.0 - 2.0** | 0% - -100% | ❌ Poor | Unrelated to opposite |
+
+#### For SigLIP Models (ViT-SO400M-16-SigLIP, etc.)
+
+| Distance Range | Similarity | Match Quality | Description |
+|---------------|------------|---------------|-------------|
+| **0.0 - 0.70** | 100% - 30% | 🏆 Perfect | Identical/near-duplicate |
+| **0.70 - 0.85** | 30% - 15% | ⭐ Excellent | Highly relevant match |
+| **0.85 - 0.90** | 15% - 10% | ✅ Great | Strong semantic match |
+| **0.90 - 0.95** | 10% - 5% | 👍 Good | Relevant match |
+| **0.95 - 1.00** | 5% - 0% | 🔍 Fair | Loosely related |
+| **1.00 - 1.50** | 0% - -50% | ⚠️ Poor | Weak connection |
+| **1.50 - 2.00** | -50% - -100% | ❌ Unrelated | No connection |
 
 ### Recommended MaxDistance Values
 
-| Use Case | Recommended `maxDistance` | Description |
-|----------|---------------------------|-------------|
-| **Exact Duplicates** | 0.1 | Find identical or nearly identical images |
-| **Near Duplicates** | 0.2 | Find very similar shots (burst photos, etc.) |
-| **Similar Photos** | 0.5 | Find photos of same subject/scene |
-| **Related Content** | 0.8 | Broader search including related themes |
-| **Loose Matching** | 1.2 | Include tangentially related content |
-| **All Results** | _omit parameter_ | No filtering, return all results |
+#### CLIP Model Recommendations
+
+| Use Case | Recommended `maxDistance` | Expected Results |
+|----------|---------------------------|------------------|
+| **Find Duplicates** | 0.2 | Only identical/near-identical |
+| **High Precision** | 0.4 | Very similar images only |
+| **Balanced Search** | 0.6 | Good relevant results |
+| **Broad Discovery** | 0.8 | Include related content |
+| **Everything** | 1.2 | All possible matches |
+
+#### SigLIP Model Recommendations
+
+| Use Case | Recommended `maxDistance` | Expected Results |
+|----------|---------------------------|------------------|
+| **Find Duplicates** | 0.70 | Only identical/near-identical |
+| **High Precision** | 0.85 | Highly relevant matches only |
+| **Balanced Search** | 0.95 | Good relevant results |
+| **Broad Discovery** | 1.05 | Include loosely related |
+| **Everything** | 1.20 | All possible matches |
+
+### How to Check Your Model
+
+```bash
+curl -X GET "http://localhost:2283/api/system-config" \
+  -H "x-api-key: YOUR_API_KEY" | jq '.machineLearning.clip.modelName'
+```
+
+- If it contains "CLIP" → Use CLIP ranges
+- If it contains "SigLIP" → Use SigLIP ranges (expect higher distances for good matches)
 
 ### Response Structure
 
@@ -248,19 +283,25 @@ npm run build
 ./test/comprehensive-test-v1.140.sh http://localhost:2283
 ```
 
-## 📊 Example: Understanding Distance in Practice
+## 📊 Real-World Examples: Model Differences
 
-Here's what different distance values mean for a search query "beach sunset":
+### Example: Searching for "swimsuit"
 
-| Distance | Similarity | What You'll Find |
-|----------|------------|------------------|
-| 0.15 | 85% | Other beach sunsets, same location/time |
-| 0.35 | 65% | Beach scenes, golden hour photos |
-| 0.55 | 45% | Coastal images, sunsets in general |
-| 0.75 | 25% | Outdoor scenes, landscapes |
-| 0.95 | 5% | Some outdoor elements |
-| 1.2 | -20% | Unrelated but not opposite |
-| 1.8 | -80% | Indoor scenes, night photos |
+#### With CLIP Model (ViT-B-32):
+| Result | Distance | Quality | What You Get |
+|--------|----------|---------|--------------|
+| Best match | ~0.3 | ⭐ Excellent | Person in swimsuit at beach |
+| Good matches | 0.3-0.5 | ✅ Great | Swimming/beach scenes |
+| Fair matches | 0.5-0.7 | 👍 Good | Summer/outdoor activities |
+
+#### With SigLIP Model (ViT-SO400M-16-SigLIP):
+| Result | Distance | Quality | What You Get |
+|--------|----------|---------|--------------|
+| Best match | ~0.87 | ⭐ Excellent | Person in swimsuit (looks bad but it's good!) |
+| Good matches | 0.87-0.92 | ✅ Great | Swimming/beach scenes |
+| Fair matches | 0.92-0.95 | 👍 Good | Summer/outdoor activities |
+
+> 💡 **Key Insight**: SigLIP consistently returns higher distance values (0.85-0.95) even for excellent matches. This is normal behavior for SigLIP models.
 
 ## 🔍 Compatibility
 
@@ -271,13 +312,22 @@ Here's what different distance values mean for a search query "beach sunset":
 
 ## ⚠️ Important Notes
 
-1. **Distance vs Similarity**: The API returns both fields. Distance is the raw cosine distance (0-2), while similarity is normalized (1 - distance).
+1. **Model-Specific Behavior**: 
+   - **CLIP models**: Expect distances 0.2-0.8 for relevant results
+   - **SigLIP models**: Expect distances 0.85-0.95 for relevant results (this is normal!)
+   - Always check your model with the system-config API endpoint
 
-2. **Performance**: Using very high `maxDistance` values (>1.5) may return many loosely related results. For best performance, use lower values.
+2. **Distance vs Similarity**: The API returns both fields. Distance is the raw cosine distance (0-2), while similarity is normalized (1 - distance).
 
-3. **ML Service Required**: The smart search features require the machine learning service to be running and properly configured.
+3. **Why SigLIP Shows High Distances**: SigLIP uses sigmoid loss instead of contrastive loss, resulting in a different similarity distribution. A 0.87 distance in SigLIP can indicate an excellent match, while in CLIP it would be poor.
 
-4. **Database Compatibility**: Use pgvecto-rs v0.3.0. Version 0.4.0 is not yet supported by Immich.
+4. **Performance**: 
+   - For CLIP: Use maxDistance 0.6-0.8 for balanced results
+   - For SigLIP: Use maxDistance 0.95-1.05 for balanced results
+
+5. **ML Service Required**: The smart search features require the machine learning service to be running and properly configured.
+
+6. **Database Compatibility**: Use pgvecto-rs v0.3.0. Version 0.4.0 is not yet supported by Immich.
 
 ## 🤝 Contributing
 
