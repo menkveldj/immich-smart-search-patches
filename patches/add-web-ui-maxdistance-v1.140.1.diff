@@ -1,0 +1,95 @@
+diff --git a/open-api/openapi-generator/templates/typescript-sdk/fetch-client.hbs b/open-api/openapi-generator/templates/typescript-sdk/fetch-client.hbs
+index 1234567..8901234 100644
+--- a/open-api/openapi-generator/templates/typescript-sdk/fetch-client.hbs
++++ b/open-api/openapi-generator/templates/typescript-sdk/fetch-client.hbs
+@@ -123,6 +123,7 @@ export type SmartSearchDto = {
+   albumIds?: string[];
+   city?: string | null;
+   country?: string | null;
++  maxDistance?: number;
+   createdAfter?: string;
+   createdBefore?: string;
+   deviceId?: string;
+diff --git a/open-api/typescript-sdk/src/fetch-client.ts b/open-api/typescript-sdk/src/fetch-client.ts
+index 1234567..8901234 100644
+--- a/open-api/typescript-sdk/src/fetch-client.ts
++++ b/open-api/typescript-sdk/src/fetch-client.ts
+@@ -998,6 +998,7 @@ export type SmartSearchDto = {
+     albumIds?: string[];
+     city?: string | null;
+     country?: string | null;
++    maxDistance?: number;
+     createdAfter?: string;
+     createdBefore?: string;
+     deviceId?: string;
+diff --git a/web/src/lib/utils/search-utils.ts b/web/src/lib/utils/search-utils.ts
+new file mode 100644
+index 0000000..1234567
+--- /dev/null
++++ b/web/src/lib/utils/search-utils.ts
+@@ -0,0 +1,19 @@
++import type { SmartSearchDto, MetadataSearchDto } from '@immich/sdk';
++
++export type SearchTerms = MetadataSearchDto & Pick<SmartSearchDto, 'query' | 'maxDistance'>;
++
++export function parseSearchQuery(queryString: string | null): SearchTerms {
++  if (!queryString) {
++    return {};
++  }
++  
++  try {
++    const parsed = JSON.parse(queryString);
++    // Ensure maxDistance is a number if present
++    if (parsed.maxDistance !== undefined) {
++      parsed.maxDistance = Number(parsed.maxDistance);
++    }
++    return parsed;
++  } catch {
++    return {};
++  }
++}
+diff --git a/web/src/routes/(user)/search/[[photos=photos]]/[[assetId=id]]/+page.svelte b/web/src/routes/(user)/search/[[photos=photos]]/[[assetId=id]]/+page.svelte
+index 2345678..3456789 100644
+--- a/web/src/routes/(user)/search/[[photos=photos]]/[[assetId=id]]/+page.svelte
++++ b/web/src/routes/(user)/search/[[photos=photos]]/[[assetId=id]]/+page.svelte
+@@ -36,6 +36,7 @@
+   import { handleError } from '$lib/utils/handle-error';
+   import { isAlbumsRoute, isPeopleRoute } from '$lib/utils/navigation';
+   import { toTimelineAsset } from '$lib/utils/timeline-util';
++  import { parseSearchQuery, type SearchTerms } from '$lib/utils/search-utils';
+   import {
+     type AlbumResponseDto,
+     getPerson,
+@@ -68,11 +69,11 @@
+ 
+   const assetInteraction = new AssetInteraction();
+ 
+-  type SearchTerms = MetadataSearchDto & Pick<SmartSearchDto, 'query'>;
+   let searchQuery = $derived(page.url.searchParams.get(QueryParameter.QUERY));
+   let smartSearchEnabled = $derived($featureFlags.loaded && $featureFlags.smartSearch);
+-  let terms = $derived(searchQuery ? JSON.parse(searchQuery) : {});
++  let terms = $derived(parseSearchQuery(searchQuery));
+ 
++  // Rest of the component remains unchanged...
+   $effect(() => {
+     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+     terms;
+@@ -154,10 +155,12 @@
+     }
+     isLoading = true;
+ 
++    // The searchDto now includes maxDistance if it was in the URL
+     const searchDto: SearchTerms = {
+       page: nextPage,
+       withExif: true,
+       isVisible: true,
+       language: $lang,
+       ...terms,
+     };
+@@ -165,6 +168,7 @@
+     try {
+       const { albums, assets } =
+         'query' in searchDto && smartSearchEnabled
++          // searchSmart will now receive maxDistance if present
+           ? await searchSmart({ smartSearchDto: searchDto })
+           : await searchAssets({ metadataSearchDto: searchDto });
