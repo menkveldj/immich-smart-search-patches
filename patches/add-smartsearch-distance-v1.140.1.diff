@@ -2,18 +2,19 @@ diff --git a/server/src/dtos/asset-response.dto.ts b/server/src/dtos/asset-respo
 index abc123..def456 100644
 --- a/server/src/dtos/asset-response.dto.ts
 +++ b/server/src/dtos/asset-response.dto.ts
-@@ -125,6 +125,10 @@ export class AssetResponseDto extends SanitizedAssetResponseDto {
-   stack!: AssetStackResponseDto | null;
+@@ -93,6 +93,11 @@ export class AssetResponseDto extends SanitizedAssetResponseDto {
    @ApiProperty({ type: 'integer' })
    stackCount!: number;
+   resized?: boolean;
++
 +  @ApiProperty({ type: 'number', required: false })
 +  distance?: number;
 +  @ApiProperty({ type: 'number', required: false })
 +  similarity?: number;
  }
  
- export class AssetStackResponseDto {
-@@ -238,6 +242,8 @@ export function mapAsset(
+ export type MapAsset = {
+@@ -238,6 +243,8 @@ export function mapAsset(
      hasMetadata: true,
      duplicateId: entity.duplicateId,
      resized: true,
