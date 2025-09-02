@@ -181,15 +181,46 @@ http://your-server/search?query=%7B%22query%22%3A%22beach%22%2C%22maxDistance%22
 http://your-server/search?query={"query":"family","maxDistance":0.9,"albumIds":["album-uuid"]}
 ```
 
+### 🎯 Complete Real-World Example
+
+Search for "gym" photos within a specific album with distance filtering:
+
+#### Clean JSON Format
+```json
+{
+  "query": "gym",
+  "albumIds": ["aed30454-1cef-4ae2-a899-503086e01359"],
+  "maxDistance": 0.95
+}
+```
+
+#### Ready-to-Use URL (Encoded)
+```
+http://192.168.8.53:2283/search?query=%7B%22query%22%3A%22gym%22%2C%22albumIds%22%3A%5B%22aed30454-1cef-4ae2-a899-503086e01359%22%5D%2C%22maxDistance%22%3A0.95%7D
+```
+
+#### Distance Recommendations by Use Case
+
+| Use Case | CLIP Models | SigLIP Models | What You Get |
+|----------|------------|---------------|--------------|
+| **Exact Matches Only** | 0.3 | 0.80 | Near-duplicates, same scene |
+| **High Precision** | 0.5 | 0.90 | Very relevant results |
+| **Balanced** (Recommended) | 0.7 | **0.95** | Good mix of relevant results |
+| **Broad Search** | 0.9 | 1.00 | Include related content |
+| **Everything** | 1.2 | 1.10 | All possible matches |
+
+> 💡 **Start with maxDistance=0.95** - This works well for most SigLIP models and provides a good balance of relevant results without too much noise.
+
 ### URL Encoding Helpers
 
 #### JavaScript (Browser Console)
 ```javascript
 const query = {
-  query: "sunset beach",
-  maxDistance: 0.9
+  query: "gym",
+  albumIds: ["aed30454-1cef-4ae2-a899-503086e01359"],
+  maxDistance: 0.95
 };
-const url = `http://your-server/search?query=${encodeURIComponent(JSON.stringify(query))}`;
+const url = `http://192.168.8.53:2283/search?query=${encodeURIComponent(JSON.stringify(query))}`;
 console.log(url);
 ```
 
@@ -198,16 +229,24 @@ console.log(url);
 import json
 import urllib.parse
 
-query = {"query": "sunset beach", "maxDistance": 0.9}
+query = {
+    "query": "gym",
+    "albumIds": ["aed30454-1cef-4ae2-a899-503086e01359"],
+    "maxDistance": 0.95
+}
 encoded = urllib.parse.quote(json.dumps(query))
-print(f"http://your-server/search?query={encoded}")
+print(f"http://192.168.8.53:2283/search?query={encoded}")
 ```
 
 #### Bash
 ```bash
-QUERY='{"query":"sunset beach","maxDistance":0.9}'
-ENCODED=$(echo -n "$QUERY" | jq -sRr @uri)
-echo "http://your-server/search?query=$ENCODED"
+QUERY='{
+  "query":"gym",
+  "albumIds":["aed30454-1cef-4ae2-a899-503086e01359"],
+  "maxDistance":0.95
+}'
+ENCODED=$(echo -n "$QUERY" | jq -c . | jq -sRr @uri)
+echo "http://192.168.8.53:2283/search?query=$ENCODED"
 ```
 
 ## 📖 API Usage Examples
