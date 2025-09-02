@@ -2,16 +2,14 @@ diff --git a/server/src/dtos/asset-response.dto.ts b/server/src/dtos/asset-respo
 index abc123..def456 100644
 --- a/server/src/dtos/asset-response.dto.ts
 +++ b/server/src/dtos/asset-response.dto.ts
-@@ -125,6 +125,12 @@ export class AssetResponseDto extends SanitizedAssetResponseDto {
+@@ -125,6 +125,10 @@ export class AssetResponseDto extends SanitizedAssetResponseDto {
    stack!: AssetStackResponseDto | null;
    @ApiProperty({ type: 'integer' })
    stackCount!: number;
 +  @ApiProperty({ type: 'number', required: false })
 +  distance?: number;
 +  @ApiProperty({ type: 'number', required: false })
-+  get similarity(): number | undefined {
-+    return this.distance !== undefined ? 1 - this.distance : undefined;
-+  }
++  similarity?: number;
  }
  
  export class AssetStackResponseDto {
@@ -19,7 +17,16 @@ diff --git a/server/src/dtos/search.dto.ts b/server/src/dtos/search.dto.ts
 index abc123..def456 100644
 --- a/server/src/dtos/search.dto.ts
 +++ b/server/src/dtos/search.dto.ts
-@@ -197,6 +197,13 @@ export class SmartSearchDto extends BaseSearchWithResultsDto {
+@@ -4,6 +4,8 @@ import {
+   IsDateString,
+   IsNotEmpty,
+   IsString,
++  IsNumber,
++  Min,
+   Max,
+   ValidateIf,
+ } from 'class-validator';
+@@ -197,6 +199,13 @@ export class SmartSearchDto extends BaseSearchWithResultsDto {
    @Type(() => Number)
    @Optional()
    page?: number;
@@ -50,7 +57,7 @@ diff --git a/server/src/repositories/search.repository.ts b/server/src/repositor
 index abc123..def456 100644
 --- a/server/src/repositories/search.repository.ts
 +++ b/server/src/repositories/search.repository.ts
-@@ -283,14 +283,37 @@ export class SearchRepository {
+@@ -283,14 +283,38 @@ export class SearchRepository {
  
      return this.db.transaction().execute(async (trx) => {
        await sql`set local vchordrq.probes = ${sql.lit(probes[VectorIndex.Clip])}`.execute(trx);
@@ -74,18 +81,19 @@ index abc123..def456 100644
          .execute();
 -      return paginationHelper(items, pagination.size);
 +      
-+      // Map items to include distance in the asset response
++      // Map items to include distance and similarity in the asset response
 +      const itemsWithDistance = items.map((item: any) => {
 +        // Extract distance value from the result
 +        const distance = item.distance;
 +        // Remove distance from the raw result to avoid TypeScript issues
 +        const { distance: _, ...assetData } = item;
 +        
-+        // Return asset with distance property
++        // Return asset with distance and similarity properties
 +        return {
 +          ...assetData,
-+          distance
-+        } as AssetEntity & { distance?: number };
++          distance,
++          similarity: distance !== undefined ? 1 - distance : undefined
++        } as AssetEntity & { distance?: number; similarity?: number };
 +      });
 +      
 +      return paginationHelper(itemsWithDistance, pagination.size);
