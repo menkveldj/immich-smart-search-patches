@@ -38,12 +38,6 @@ jobs:
           cd immich-source
           echo "📝 Applying patches to Immich ${{ github.event.inputs.immich_version }}..."
           
-          # Check if there's an old patch remnant that needs cleaning
-          if grep -q "get similarity():" server/src/dtos/asset-response.dto.ts 2>/dev/null; then
-            echo "⚠️ Found old patch remnants, cleaning up first..."
-            git apply ../patches/cleanup-old-patch.diff || true
-          fi
-          
           # Try v1.140.1+ patch
           if git apply --check ../patches/add-smartsearch-distance-v1.140.1.diff 2>/dev/null; then
             git apply ../patches/add-smartsearch-distance-v1.140.1.diff

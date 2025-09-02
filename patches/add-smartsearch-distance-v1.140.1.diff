@@ -1,10 +1,10 @@
 diff --git a/server/src/dtos/asset-response.dto.ts b/server/src/dtos/asset-response.dto.ts
-index abc123..def456 100644
+index f60f2a8..ffac991 100644
 --- a/server/src/dtos/asset-response.dto.ts
 +++ b/server/src/dtos/asset-response.dto.ts
 @@ -93,6 +93,11 @@ export class AssetResponseDto extends SanitizedAssetResponseDto {
-   @ApiProperty({ type: 'integer' })
-   stackCount!: number;
+ 
+   @PropertyLifecycle({ deprecatedAt: 'v1.113.0' })
    resized?: boolean;
 +
 +  @ApiProperty({ type: 'number', required: false })
@@ -14,7 +14,7 @@ index abc123..def456 100644
  }
  
  export type MapAsset = {
-@@ -238,6 +243,8 @@ export function mapAsset(
+@@ -228,5 +233,7 @@ export function mapAsset(entity: MapAsset, options: AssetMapOptions = {}): Asse
      hasMetadata: true,
      duplicateId: entity.duplicateId,
      resized: true,
@@ -22,21 +22,19 @@ index abc123..def456 100644
 +    similarity: (entity as any).similarity,
    };
  }
- 
 diff --git a/server/src/dtos/search.dto.ts b/server/src/dtos/search.dto.ts
-index abc123..def456 100644
+index 086f3cf..d6b59a3 100644
 --- a/server/src/dtos/search.dto.ts
 +++ b/server/src/dtos/search.dto.ts
-@@ -4,6 +4,8 @@ import {
-   IsDateString,
-   IsNotEmpty,
-   IsString,
-+  IsNumber,
-+  Min,
-   Max,
-   ValidateIf,
- } from 'class-validator';
-@@ -197,6 +199,13 @@ export class SmartSearchDto extends BaseSearchWithResultsDto {
+@@ -1,6 +1,6 @@
+ import { ApiProperty } from '@nestjs/swagger';
+ import { Type } from 'class-transformer';
+-import { IsInt, IsNotEmpty, IsString, Max, Min } from 'class-validator';
++import { IsInt, IsNotEmpty, IsNumber, IsString, Max, Min } from 'class-validator';
+ import { Place } from 'src/database';
+ import { PropertyLifecycle } from 'src/decorators';
+ import { AlbumResponseDto } from 'src/dtos/album.dto';
+@@ -211,6 +211,14 @@ export class SmartSearchDto extends BaseSearchWithResultsDto {
    @Type(() => Number)
    @Optional()
    page?: number;
@@ -50,24 +48,23 @@ index abc123..def456 100644
 +  maxDistance?: number;
  }
  
- export class FaceDto {
-diff --git a/server/src/interfaces/search.interface.ts b/server/src/interfaces/search.interface.ts
-index abc123..def456 100644
---- a/server/src/interfaces/search.interface.ts
-+++ b/server/src/interfaces/search.interface.ts
-@@ -68,6 +68,7 @@ export interface SmartSearchOptions extends BaseSearchOptions {
-   deviceIds?: string[];
-   userIds?: string[];
-   withHidden?: boolean;
-+  maxDistance?: number;
- }
- 
- export interface FaceEmbeddingSearch {
+ export class SearchPlacesDto {
 diff --git a/server/src/repositories/search.repository.ts b/server/src/repositories/search.repository.ts
-index abc123..def456 100644
+index 623e63f..e7b3029 100644
 --- a/server/src/repositories/search.repository.ts
 +++ b/server/src/repositories/search.repository.ts
-@@ -283,14 +283,38 @@ export class SearchRepository {
+@@ -127,7 +127,9 @@ export type SmartSearchOptions = SearchDateOptions &
+   SearchStatusOptions &
+   SearchUserIdOptions &
+   SearchPeopleOptions &
+-  SearchTagOptions;
++  SearchTagOptions & {
++    maxDistance?: number;
++  };
+ 
+ export type LargeAssetSearchOptions = AssetSearchOptions & { minFileSize?: number };
+ 
+@@ -281,14 +283,38 @@ export class SearchRepository {
  
      return this.db.transaction().execute(async (trx) => {
        await sql`set local vchordrq.probes = ${sql.lit(probes[VectorIndex.Clip])}`.execute(trx);
@@ -103,22 +100,9 @@ index abc123..def456 100644
 +          ...assetData,
 +          distance,
 +          similarity: distance !== undefined ? 1 - distance : undefined
-+        } as AssetEntity & { distance?: number; similarity?: number };
++        };
 +      });
 +      
 +      return paginationHelper(itemsWithDistance, pagination.size);
      });
    }
- 
-diff --git a/server/src/services/search.service.ts b/server/src/services/search.service.ts
-index abc123..def456 100644
---- a/server/src/services/search.service.ts
-+++ b/server/src/services/search.service.ts
-@@ -133,6 +133,7 @@ export class SearchService extends BaseService {
-       userIds: [auth.user.id],
-       embedding,
-       withHidden: dto.withHidden,
-+      maxDistance: dto.maxDistance,
-     });
- 
-     const assets = results.items.map((item) => mapAsset(item, { withStack: true, auth }));
