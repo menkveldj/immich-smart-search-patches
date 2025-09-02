@@ -14,7 +14,7 @@ index f60f2a8..ffac991 100644
  }
  
  export type MapAsset = {
-@@ -228,5 +233,7 @@ export function mapAsset(entity: MapAsset, options: AssetMapOptions = {}): Asse
+@@ -228,5 +233,7 @@ export function mapAsset(entity: MapAsset, options: AssetMapOptions = {}): Asset
      hasMetadata: true,
      duplicateId: entity.duplicateId,
      resized: true,
@@ -23,7 +23,7 @@ index f60f2a8..ffac991 100644
    };
  }
 diff --git a/server/src/dtos/search.dto.ts b/server/src/dtos/search.dto.ts
-index 086f3cf..d6b59a3 100644
+index f709ad9..5ae22c7 100644
 --- a/server/src/dtos/search.dto.ts
 +++ b/server/src/dtos/search.dto.ts
 @@ -1,6 +1,6 @@
@@ -50,7 +50,7 @@ index 086f3cf..d6b59a3 100644
  
  export class SearchPlacesDto {
 diff --git a/server/src/repositories/search.repository.ts b/server/src/repositories/search.repository.ts
-index 623e63f..e7b3029 100644
+index 36ef7a2..738d13c 100644
 --- a/server/src/repositories/search.repository.ts
 +++ b/server/src/repositories/search.repository.ts
 @@ -127,7 +127,9 @@ export type SmartSearchOptions = SearchDateOptions &
@@ -64,7 +64,7 @@ index 623e63f..e7b3029 100644
  
  export type LargeAssetSearchOptions = AssetSearchOptions & { minFileSize?: number };
  
-@@ -281,14 +283,38 @@ export class SearchRepository {
+@@ -282,14 +284,39 @@ export class SearchRepository {
  
      return this.db.transaction().execute(async (trx) => {
        await sql`set local vchordrq.probes = ${sql.lit(probes[VectorIndex.Clip])}`.execute(trx);
@@ -106,3 +106,4 @@ index 623e63f..e7b3029 100644
 +      return paginationHelper(itemsWithDistance, pagination.size);
      });
    }
+ 
