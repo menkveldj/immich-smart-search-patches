@@ -30,7 +30,8 @@ Our patch adds powerful distance-based filtering and scoring to Immich's smart s
 
 - **Distance field**: Cosine distance from query (0-2 range, lower = better match)
 - **Similarity field**: Normalized similarity score (1 - distance)
-- **MaxDistance filtering**: Filter results by similarity threshold
+- **MaxDistance filtering**: Filter results by similarity threshold via API or URL
+- **Web UI URL Support**: Filter directly via URL query parameters
 - **Proper result ranking**: Results ordered by relevance
 
 **Note**: Starting from v1.140.1, Immich natively supports album filtering via the `albumIds` parameter. Our patch adds the distance/similarity scoring and filtering capabilities.
@@ -145,6 +146,68 @@ curl -X GET "http://localhost:2283/api/system-config" \
     "nextPage": null
   }
 }
+```
+
+## 🌐 Web UI URL-Based Search
+
+### Direct URL Search with Distance Filtering
+
+The patch enables distance filtering directly through the web UI using URL query parameters. No UI modifications needed - just use specially formatted URLs.
+
+#### Basic Search URL
+```
+http://your-server/search?query={"query":"sunset"}
+```
+
+#### Search with Distance Filter
+```
+http://your-server/search?query={"query":"sunset","maxDistance":0.9}
+```
+
+#### URL-Encoded Examples
+
+For CLIP models (use lower distance values):
+```
+http://your-server/search?query=%7B%22query%22%3A%22beach%22%2C%22maxDistance%22%3A0.5%7D
+```
+
+For SigLIP models (use higher distance values):
+```
+http://your-server/search?query=%7B%22query%22%3A%22beach%22%2C%22maxDistance%22%3A0.95%7D
+```
+
+#### Combined with Album Filter
+```
+http://your-server/search?query={"query":"family","maxDistance":0.9,"albumIds":["album-uuid"]}
+```
+
+### URL Encoding Helpers
+
+#### JavaScript (Browser Console)
+```javascript
+const query = {
+  query: "sunset beach",
+  maxDistance: 0.9
+};
+const url = `http://your-server/search?query=${encodeURIComponent(JSON.stringify(query))}`;
+console.log(url);
+```
+
+#### Python
+```python
+import json
+import urllib.parse
+
+query = {"query": "sunset beach", "maxDistance": 0.9}
+encoded = urllib.parse.quote(json.dumps(query))
+print(f"http://your-server/search?query={encoded}")
+```
+
+#### Bash
+```bash
+QUERY='{"query":"sunset beach","maxDistance":0.9}'
+ENCODED=$(echo -n "$QUERY" | jq -sRr @uri)
+echo "http://your-server/search?query=$ENCODED"
 ```
 
 ## 📖 API Usage Examples
@@ -262,13 +325,16 @@ npm run build
 
 ```
 ├── patches/                    # Patch files for different versions
-│   ├── add-smartsearch-distance-v1.140.1.diff  # Latest patch
-│   └── add-smartsearch-score-and-album.diff    # Legacy v1.122.3
+│   ├── add-smartsearch-distance-v1.140.1.diff      # Server-side distance scoring
+│   ├── add-web-ui-maxdistance-v1.140.1.diff       # Web UI URL parameter support
+│   └── add-smartsearch-score-and-album.diff       # Legacy v1.122.3
 ├── test/                       # Test scripts
 │   ├── comprehensive-test-v1.140.sh
 │   └── test-patch-features.sh
 ├── scripts/                    # Automation scripts
 │   └── end-to-end-test.sh
+├── docs/                       # Documentation
+│   └── WEB_UI_DISTANCE_SEARCH.md                  # Web UI usage guide
 └── .github/workflows/          # CI/CD automation
 ```
 
