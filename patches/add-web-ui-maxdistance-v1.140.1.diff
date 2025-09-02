@@ -1,20 +1,8 @@
-diff --git a/open-api/openapi-generator/templates/typescript-sdk/fetch-client.hbs b/open-api/openapi-generator/templates/typescript-sdk/fetch-client.hbs
-index 1234567..8901234 100644
---- a/open-api/openapi-generator/templates/typescript-sdk/fetch-client.hbs
-+++ b/open-api/openapi-generator/templates/typescript-sdk/fetch-client.hbs
-@@ -123,6 +123,7 @@ export type SmartSearchDto = {
-   albumIds?: string[];
-   city?: string | null;
-   country?: string | null;
-+  maxDistance?: number;
-   createdAfter?: string;
-   createdBefore?: string;
-   deviceId?: string;
 diff --git a/open-api/typescript-sdk/src/fetch-client.ts b/open-api/typescript-sdk/src/fetch-client.ts
-index 1234567..8901234 100644
+index 0f0357c..b614997 100644
 --- a/open-api/typescript-sdk/src/fetch-client.ts
 +++ b/open-api/typescript-sdk/src/fetch-client.ts
-@@ -998,6 +998,7 @@ export type SmartSearchDto = {
+@@ -999,6 +999,7 @@ export type SmartSearchDto = {
      albumIds?: string[];
      city?: string | null;
      country?: string | null;
@@ -22,74 +10,125 @@ index 1234567..8901234 100644
      createdAfter?: string;
      createdBefore?: string;
      deviceId?: string;
-diff --git a/web/src/lib/utils/search-utils.ts b/web/src/lib/utils/search-utils.ts
-new file mode 100644
-index 0000000..1234567
---- /dev/null
-+++ b/web/src/lib/utils/search-utils.ts
-@@ -0,0 +1,19 @@
-+import type { SmartSearchDto, MetadataSearchDto } from '@immich/sdk';
+diff --git a/server/src/dtos/asset-response.dto.ts b/server/src/dtos/asset-response.dto.ts
+index f60f2a8..ffac991 100644
+--- a/server/src/dtos/asset-response.dto.ts
++++ b/server/src/dtos/asset-response.dto.ts
+@@ -93,6 +93,11 @@ export class AssetResponseDto extends SanitizedAssetResponseDto {
+ 
+   @PropertyLifecycle({ deprecatedAt: 'v1.113.0' })
+   resized?: boolean;
 +
-+export type SearchTerms = MetadataSearchDto & Pick<SmartSearchDto, 'query' | 'maxDistance'>;
++  @ApiProperty({ type: 'number', required: false })
++  distance?: number;
++  @ApiProperty({ type: 'number', required: false })
++  similarity?: number;
+ }
+ 
+ export type MapAsset = {
+@@ -228,5 +233,7 @@ export function mapAsset(entity: MapAsset, options: AssetMapOptions = {}): Asset
+     hasMetadata: true,
+     duplicateId: entity.duplicateId,
+     resized: true,
++    distance: (entity as any).distance,
++    similarity: (entity as any).similarity,
+   };
+ }
+diff --git a/server/src/dtos/search.dto.ts b/server/src/dtos/search.dto.ts
+index f709ad9..5ae22c7 100644
+--- a/server/src/dtos/search.dto.ts
++++ b/server/src/dtos/search.dto.ts
+@@ -1,6 +1,6 @@
+ import { ApiProperty } from '@nestjs/swagger';
+ import { Type } from 'class-transformer';
+-import { IsInt, IsNotEmpty, IsString, Max, Min } from 'class-validator';
++import { IsInt, IsNotEmpty, IsNumber, IsString, Max, Min } from 'class-validator';
+ import { Place } from 'src/database';
+ import { PropertyLifecycle } from 'src/decorators';
+ import { AlbumResponseDto } from 'src/dtos/album.dto';
+@@ -211,6 +211,14 @@ export class SmartSearchDto extends BaseSearchWithResultsDto {
+   @Type(() => Number)
+   @Optional()
+   page?: number;
 +
-+export function parseSearchQuery(queryString: string | null): SearchTerms {
-+  if (!queryString) {
-+    return {};
-+  }
-+  
-+  try {
-+    const parsed = JSON.parse(queryString);
-+    // Ensure maxDistance is a number if present
-+    if (parsed.maxDistance !== undefined) {
-+      parsed.maxDistance = Number(parsed.maxDistance);
-+    }
-+    return parsed;
-+  } catch {
-+    return {};
-+  }
-+}
++  @IsNumber()
++  @Min(0)
++  @Max(2)
++  @Type(() => Number)
++  @Optional()
++  @ApiProperty({ type: 'number', required: false, description: 'Maximum distance threshold for filtering results (0-2, lower is more similar)' })
++  maxDistance?: number;
+ }
+ 
+ export class SearchPlacesDto {
+diff --git a/server/src/repositories/search.repository.ts b/server/src/repositories/search.repository.ts
+index 36ef7a2..738d13c 100644
+--- a/server/src/repositories/search.repository.ts
++++ b/server/src/repositories/search.repository.ts
+@@ -127,7 +127,9 @@ export type SmartSearchOptions = SearchDateOptions &
+   SearchStatusOptions &
+   SearchUserIdOptions &
+   SearchPeopleOptions &
+-  SearchTagOptions;
++  SearchTagOptions & {
++    maxDistance?: number;
++  };
+ 
+ export type LargeAssetSearchOptions = AssetSearchOptions & { minFileSize?: number };
+ 
+@@ -282,14 +284,39 @@ export class SearchRepository {
+ 
+     return this.db.transaction().execute(async (trx) => {
+       await sql`set local vchordrq.probes = ${sql.lit(probes[VectorIndex.Clip])}`.execute(trx);
+-      const items = await searchAssetBuilder(trx, options)
++      
++      let query = searchAssetBuilder(trx, options)
+         .selectAll('asset')
++        .select(sql<number>`smart_search.embedding <=> ${options.embedding}`.as('distance'))
+         .innerJoin('smart_search', 'asset.id', 'smart_search.assetId')
+-        .orderBy(sql`smart_search.embedding <=> ${options.embedding}`)
++        .orderBy(sql`smart_search.embedding <=> ${options.embedding}`);
++      
++      // Apply distance filter if maxDistance is specified
++      if (options.maxDistance !== undefined && options.maxDistance >= 0) {
++        query = query.where(sql`smart_search.embedding <=> ${options.embedding}`, '<=', options.maxDistance);
++      }
++      
++      const items = await query
+         .limit(pagination.size + 1)
+         .offset((pagination.page - 1) * pagination.size)
+         .execute();
+-      return paginationHelper(items, pagination.size);
++      
++      // Map items to include distance and similarity in the asset response
++      const itemsWithDistance = items.map((item: any) => {
++        // Extract distance value from the result
++        const distance = item.distance;
++        // Remove distance from the raw result to avoid TypeScript issues
++        const { distance: _, ...assetData } = item;
++        
++        // Return asset with distance and similarity properties
++        return {
++          ...assetData,
++          distance,
++          similarity: distance !== undefined ? 1 - distance : undefined
++        };
++      });
++      
++      return paginationHelper(itemsWithDistance, pagination.size);
+     });
+   }
+ 
 diff --git a/web/src/routes/(user)/search/[[photos=photos]]/[[assetId=id]]/+page.svelte b/web/src/routes/(user)/search/[[photos=photos]]/[[assetId=id]]/+page.svelte
-index 2345678..3456789 100644
+index 56e58c3..6651a09 100644
 --- a/web/src/routes/(user)/search/[[photos=photos]]/[[assetId=id]]/+page.svelte
 +++ b/web/src/routes/(user)/search/[[photos=photos]]/[[assetId=id]]/+page.svelte
-@@ -36,6 +36,7 @@
-   import { handleError } from '$lib/utils/handle-error';
-   import { isAlbumsRoute, isPeopleRoute } from '$lib/utils/navigation';
-   import { toTimelineAsset } from '$lib/utils/timeline-util';
-+  import { parseSearchQuery, type SearchTerms } from '$lib/utils/search-utils';
-   import {
-     type AlbumResponseDto,
-     getPerson,
-@@ -68,11 +69,11 @@
+@@ -68,7 +68,7 @@
  
    const assetInteraction = new AssetInteraction();
  
 -  type SearchTerms = MetadataSearchDto & Pick<SmartSearchDto, 'query'>;
++  type SearchTerms = MetadataSearchDto & Pick<SmartSearchDto, 'query' | 'maxDistance'>;
    let searchQuery = $derived(page.url.searchParams.get(QueryParameter.QUERY));
    let smartSearchEnabled = $derived($featureFlags.loaded && $featureFlags.smartSearch);
--  let terms = $derived(searchQuery ? JSON.parse(searchQuery) : {});
-+  let terms = $derived(parseSearchQuery(searchQuery));
- 
-+  // Rest of the component remains unchanged...
-   $effect(() => {
-     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-     terms;
-@@ -154,10 +155,12 @@
-     }
-     isLoading = true;
- 
-+    // The searchDto now includes maxDistance if it was in the URL
-     const searchDto: SearchTerms = {
-       page: nextPage,
-       withExif: true,
-       isVisible: true,
-       language: $lang,
-       ...terms,
-     };
-@@ -165,6 +168,7 @@
-     try {
-       const { albums, assets } =
-         'query' in searchDto && smartSearchEnabled
-+          // searchSmart will now receive maxDistance if present
-           ? await searchSmart({ smartSearchDto: searchDto })
-           : await searchAssets({ metadataSearchDto: searchDto });
+   let terms = $derived(searchQuery ? JSON.parse(searchQuery) : {});
